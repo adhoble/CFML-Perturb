@@ -1,0 +1,262 @@
+\documentclass{article}
+\usepackage{fullpage, palatino}
+\begin{document}
+%\SweaveOpts{concordance=TRUE}
+
+\title{Machine learning analysis of flow cytometry data using H2O}
+\author{Kaustubh D. Bhalerao \and Abhishek S. Dhoble}
+\maketitle
+
+\begin{abstract}
+To determine if deep learning can be fruitful in the classification of flow cytometry samples. 
+\end{abstract}
+
+
+\section*{Set up the working directory and libraries}
+
+
+Confirm first that Bioconductor is installed, and the \texttt{flowCore} package is also installed. Also make sure other standard libraries and the \texttt{h2o} packages are also installed. 
+
+<<initial_setup, echo=FALSE, results='hide', cache=TRUE, message=FALSE>>=
+directory <- "5DExp"
+library(plyr)
+library(reshape)
+library(flowCore)
+library(MASS)
+library(h2o)
+library(ggplot2)
+@
+
+\section*{Flow cytometry data and its analysis}
+Here we now import the fcs data for the 5 day experiment. We check if it has been previously imported, in which case it can read a disk image of the data.
+
+<<flowcyt_init, cache=TRUE, echo=FALSE, eval=FALSE, message=FALSE>>=
+## This chunk causes errors in knitr - do not evaluate while 
+## producing the PDF. Run it separately in the console. 
+
+if(file.exists("fset.RData")) {
+  load("fset.RData")
+} else {
+  fset <- read.flowSet(path=directory, pattern="*.fcs")
+  save(fset, file="fset.RData")
+}
+
+parse_name <- function(name) {
+  csource <- substr(name, 3,6)
+  day <- substr(name, 8,8)
+  rep <- substr(name, 10,10)
+  c(csource, day, rep, name)
+}
+
+if(!file.exists("samples.csv")) {
+  samples <- sampleNames(fset)
+  
+  
+  sample_table <- ldply(samples, parse_name)
+  names(sample_table) <- c("csource", "day", "rep", "name")  
+  write.csv(sample_table, "samples.csv", row.names=FALSE)
+} else {
+  sample_table <- read.csv("samples.csv")
+}
+
+@
+
+\section*{Create training and validation data sets}
+To keep the number of nodes in the input layer to a reasonable number, we choose to take 1000 events from each fcs data set. We will only take the \texttt{FSC-A}, \texttt{SSC-A} and \texttt{AmCyan-A} columns from each field. 
+
+Each fcs file of 100000 events will be split into 10 files of 1000 events each, and placed in a data frame. The label for the data frame will be the carbon source. 
+
+Data from the third replicate will be split into two parts, one part will be used as the validation data set and the second will be used as the test set in each case. 
+
+
+<<create_datasets, cache=TRUE, message=FALSE, echo=FALSE>>=
+#if(!file.exists("ValidationSet.RData")) {
+  split_flow_frame <- function(ff) {
+    ## take a flow frame, extract the relevant columns, and 
+    ## return it as a dataframe of 10 observations, each having 
+    ## 1000 points of 3 readings each. 
+    dat <- log(exprs(ff)[,c("FSC-A", "SSC-A", "AmCyan-A")])
+    dat <- data.frame(dat)
+    dat$mod <- 1:nrow(dat) %% 100
+    
+    split <- ddply(dat, .(mod), function(d) {
+      c(d$'FSC.A', d$'SSC.A', d$'AmCyan.A')
+    })
+    
+    split
+  }
+  
+  ## Going to modify the way trianing, validation and test datasets are created. 
+## We also create two labels
+
+  bigset <- fsApply(fset, function(ff) {
+    split <- split_flow_frame(ff) 
+    split <- subset(split, select=-c(mod)) ## drop that column
+    split$label <- parse_name(identifier(ff))[1]
+    split$labelT <- paste0(parse_name(identifier(ff))[1], parse_name(identifier(ff))[2])
+    split
+  })
+  
+  bigset <- ldply(bigset, function(d) {d})
+  bigset <- bigset[, !(names(bigset) %in% c(".id"))]
+  
+  datasplitter <- 1:nrow(bigset) # total number of rows .
+  datasplitter <- datasplitter %% 4; 
+  
+  training_set <- bigset[which(datasplitter %in% c(0,1)),] ## Training set
+  validation_set <- bigset[which(datasplitter %in% c(2)),]
+  test_set <- bigset[which(datasplitter %in% c(3)),]
+  
+  write.csv(training_set, file="trainingset.csv", row.names=F)
+  write.csv(validation_set, file="validationset.csv", row.names=F)
+  write.csv(test_set, file="testset.csv", row.names=F)
+  save(training_set, file="TrainingSet.RData")
+  save(validation_set, file="ValidationSet.RData")
+  save(test_set, file="TestingSet.RData")
+#}
+@
+
+\section*{Set up H2O server and load data}
+
+<<h2o_init, cache=TRUE, message=FALSE, echo=FALSE>>=
+localh2o <- h2o.init(nthreads=-1, max_mem_size = "6g")
+h2o.removeAll() ## clean slate - just in case the cluster was already running
+@
+
+<<h2o_upload, cache=TRUE, message=FALSE, echo=FALSE>>=
+## try the files directly. 
+trainpath = normalizePath("./trainingset.csv")
+validatepath = normalizePath("./validationset.csv")
+testpath = normalizePath("./testset.csv")
+h2otrain <- h2o.uploadFile(trainpath, destination_frame = "h2otrain0", 
+                           parse = TRUE, parse_type="CSV", progressBar =FALSE)
+h2ovalidate <- h2o.uploadFile(validatepath, 
+                              destination_frame = "h2ovalidate0", 
+                              parse = TRUE, parse_type = "CSV", 
+                              progressBar =FALSE)
+h2otest <- h2o.uploadFile(testpath, 
+                          destination_frame = "h2otest0", 
+                          parse = TRUE, parse_type = "CSV", 
+                          progressBar = FALSE)
+
+## The following is the way to upload dataframes directly from R
+## However, this was not working for me earlier - 
+## Faster to save the file and upload it like above. 
+#h2otrain <- as.h2o(trainingset, destination_frame="h2otrain")
+#h2ovalidate <- as.h2o(validationset, destination_frame="h2ovalidate")
+@
+
+\section*{Hold your breath and run the model}
+
+We will first run the model using an \texttt{autoencoder} option, which does a dimensional reduction type analysis, and tries to determine which data looks the `wierdest'. 
+
+<<h2o_autoenc, cache=TRUE, message=FALSE, echo=FALSE>>=
+response <- "labelT"
+ignore <- "label"
+predictors <- setdiff(names(h2otrain), c(response, ignore))
+ae_model <- h2o.deeplearning(
+  model_id = "autoenc_model", 
+  training_frame = "h2otrain0", 
+  validation_frame = "h2ovalidate0", 
+  x = predictors, 
+  #y = response, 
+  activation="Tanh", 
+  hidden=c(2000),
+  epochs=1,
+  ignore_const_cols=F, 
+  autoencoder=T
+)
+
+test_rec_error <- as.data.frame(h2o.anomaly(ae_model, h2otest))
+test_rec_error$labelT <- test_set$labelT
+ggplot(test_rec_error, aes(x=labelT, y=Reconstruction.MSE)) + geom_boxplot() +
+  theme(axis.text.x=element_text(angle=-90))
+test_recon <- h2o.predict(ae_model, h2otest)
+summary(test_recon)
+@
+
+From the above graph, it appears that glucose and cellulose look very different from the dataset. 
+
+<<h2o_run, cache=TRUE, message=FALSE, echo=FALSE>>=
+response <- "label"
+ignore <- "labelT"
+predictors <- setdiff(names(h2otrain), c(response, ignore))
+m1 <- h2o.deeplearning(
+  model_id = "model0", 
+  training_frame = "h2otrain0", 
+  validation_frame = "h2ovalidate0", 
+  x = predictors, 
+  y = response, 
+  activation="RectifierWithDropout",  ## default
+  input_dropout_ratio = 0.1, 
+  hidden_dropout_ratios = c(0.2, 0.2, 0.1),
+  hidden=c(2000,1000,500), ## default:
+  epochs=10,
+  l1 = 1e-5, 
+  l2 = 1e-5, 
+  variable_importances=F, ## not enabled by default
+  quiet_mode = TRUE
+)
+summary(m1)
+@
+
+<<model_prediction, echo=FALSE, message = FALSE>>=
+
+predictions <- h2o.predict(m1, h2otest)
+predmat <- as.matrix(predictions)
+# Stuff from the console..
+predvec <- predmat[,1]
+predmat <- predmat[,2:9]
+class(predmat) <- "numeric"
+preds <- data.frame(predmat)
+
+ggplot(melt(as.data.frame(predictions)), aes(x=variable, y=value)) + 
+  geom_boxplot() + 
+  facet_grid(predict~.)
+@
+
+\section*{Resolving time dependency in data}
+
+<<temporal_models>>=
+#h2o.removeAll()
+
+response <- "labelT"
+ignore <- "label"
+predictors <- setdiff(names(h2otrain), c(response, ignore))
+m2 <- h2o.deeplearning(
+  model_id = "TemporalModel", 
+  training_frame = h2otrain, 
+  validation_frame = h2ovalidate, 
+  x = predictors, 
+  y = response, 
+  activation="RectifierWithDropout",  
+  input_dropout_ratio = 0.1, 
+  hidden_dropout_ratios = c(0.2, 0.2, 0.1),
+  hidden=c(2000,1000,500), ## default:
+  epochs=10,
+  l1 = 1e-5, 
+  l2 = 1e-5, 
+  variable_importances=F, ## not enabled by default
+  quiet_mode = TRUE
+)
+summary(m2)
+
+@
+
+<<temporal_model_predictions>>=
+predictions <- h2o.predict(m2, h2otest)
+predmat <- as.matrix(predictions)
+# Stuff from the console..
+predvec <- predmat[,1]
+predmat <- predmat[,2:9]
+class(predmat) <- "numeric"
+preds <- data.frame(predmat)
+
+ggplot(melt(as.data.frame(predictions)), aes(x=variable, y=value)) + 
+  geom_boxplot() + 
+  facet_grid(predict~.)
+
+@
+
+
+\end{document}
