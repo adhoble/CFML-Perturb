@@ -1,0 +1,63 @@
+
+#Implementation of deep learning
+
+#Required packages
+library(h2o)
+library(ggplot2)
+
+#Setting up H2O server and load data
+
+localh2o <- h2o.init(nthreads=-1, max_mem_size = "6g")
+h2o.removeAll() ## clean slate - just in case the cluster was already running
+
+#uploading datasets
+trainpath = normalizePath("./trainingset.csv")
+validatepath = normalizePath("./validationset.csv")
+testpath = normalizePath("./testset.csv")
+h2otrain <- h2o.uploadFile(trainpath, destination_frame = "h2otrain0", 
+                           parse = TRUE, parse_type="CSV", progressBar =FALSE)
+h2ovalidate <- h2o.uploadFile(validatepath, 
+                              destination_frame = "h2ovalidate0", 
+                              parse = TRUE, parse_type = "CSV", 
+                              progressBar =FALSE)
+h2otest <- h2o.uploadFile(testpath, 
+                          destination_frame = "h2otest0", 
+                          parse = TRUE, parse_type = "CSV", 
+                          progressBar = FALSE)
+
+#deep learning model implementation
+response <- "label"
+ignore <- "labelT"
+predictors <- setdiff(names(h2otrain), c(response, ignore))
+m1 <- h2o.deeplearning(
+  model_id = "model0", 
+  training_frame = "h2otrain0", 
+  validation_frame = "h2ovalidate0", 
+  x = predictors, 
+  y = response, 
+  activation="RectifierWithDropout",  ## default
+  input_dropout_ratio = 0.1, 
+  hidden_dropout_ratios = c(0.2, 0.2, 0.1),
+  hidden=c(2000,1000,500), ## default:
+  epochs=10,
+  l1 = 1e-5, 
+  l2 = 1e-5, 
+  variable_importances=F, ## not enabled by default
+  quiet_mode = TRUE
+)
+summary(m1)
+
+
+predictions <- h2o.predict(m1, h2otest)
+predmat <- as.matrix(predictions)
+# Stuff from the console..
+predvec <- predmat[,1]
+predmat <- predmat[,2:9]
+class(predmat) <- "numeric"
+preds <- data.frame(predmat)
+
+#plotting predictions
+ggplot(melt(as.data.frame(predictions)), aes(x=variable, y=value)) + 
+  geom_boxplot() + 
+  facet_grid(predict~.)
+
