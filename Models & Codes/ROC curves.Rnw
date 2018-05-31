@@ -1,0 +1,119 @@
+
+#Code for plotting ROC curves
+#Contributed by Dr. Pratik Lahiri
+
+m1_predictions <- h2o.predict(m1, h2otest)
+m1_predmat <- as.matrix(m1_predictions)
+m2_predictions <- h2o.predict(m2, h2otest)
+m2_predmat <- as.matrix(m2_predictions)
+m3_predictions <- h2o.predict(m3, h2otest)
+m3_predmat <- as.matrix(m3_predictions)
+m4_predictions <- h2o.predict(m4, h2otest)
+m4_predmat <- as.matrix(m4_predictions)
+h2otest_matrix<-as.matrix(h2otest)
+m1_predvec_aceto<-m1_predmat[,2]
+m1_predvec_acido<-m1_predmat[,3]
+m1_predvec_hydro<-m1_predmat[,4]
+m1_predvec_metha<-m1_predmat[,5]
+m2_predvec_aceto<-m2_predmat[,2]
+m2_predvec_acido<-m2_predmat[,3]
+m2_predvec_hydro<-m2_predmat[,4]
+m2_predvec_metha<-m2_predmat[,5]
+m3_predvec_aceto<-m3_predmat[,2]
+m3_predvec_acido<-m3_predmat[,3]
+m3_predvec_hydro<-m3_predmat[,4]
+m3_predvec_metha<-m3_predmat[,5]
+m4_predvec_aceto<-m4_predmat[,2]
+m4_predvec_acido<-m4_predmat[,3]
+m4_predvec_hydro<-m4_predmat[,4]
+m4_predvec_metha<-m4_predmat[,5]
+#Plotting for ACETO
+par(mfrow=c(2,2))
+labels<-h2otest_matrix[,3001]
+nl<-revalue(labels,c(ACETO=1,ACIDO=0,HYDRO=0,METHA=0))
+rocobj<-roc(nl,as.numeric(m1_predvec_aceto))
+plot.roc(rocobj,legacy.axes = T, col='red',axes=F,ylab="")
+rocobj<-roc(nl,as.numeric(m2_predvec_aceto))
+plot.roc(rocobj,legacy.axes = T, col='blue',axes=F,add=T)
+rocobj<-roc(nl,as.numeric(m3_predvec_aceto))
+plot.roc(rocobj,legacy.axes = T, col='black',axes=F,add=T)
+rocobj<-roc(nl,as.numeric(m4_predvec_aceto))
+plot.roc(rocobj,legacy.axes = T, col='green',axes=F,add=T)
+legend('bottomright',c('DL','GBM','DRF','NB'), fill=c('red','blue','black','green'), cex=0.75, bty='n')
+xtick<-seq(0, 1, by=0.5)
+ytick<-seq(0.5, 1, by=0.5)
+abline(h=0)
+abline(v=1)
+text(x=xtick,  par("usr")[3], labels = c(1,0.5,0), srt = 45, pos = 1, xpd = TRUE)
+text(x=c(1.2,1.2),y=ytick,  par("usr")[1], labels = c(0.5,1), srt = 45, pos = 1, xpd = TRUE)
+text(x=1.35,y=0.5, labels = "Sensitivity", srt = 90, pos = 1, xpd = TRUE)
+#####
+#Plotting for ACIDO
+labels<-h2otest_matrix[,3001]
+nl<-revalue(labels,c(ACETO=0,ACIDO=1,HYDRO=0,METHA=0))
+rocobj<-roc(nl,as.numeric(m1_predvec_acido))
+plot.roc(rocobj,legacy.axes = T, axes=F, col='red',ylab="")
+rocobj<-roc(nl,as.numeric(m2_predvec_acido))
+plot.roc(rocobj,legacy.axes = T, col='blue',axes=F,add=T)
+rocobj<-roc(nl,as.numeric(m3_predvec_acido))
+plot.roc(rocobj,legacy.axes = T, col='black',axes=F,add=T)
+rocobj<-roc(nl,as.numeric(m4_predvec_acido))
+plot.roc(rocobj,legacy.axes = T, col='green',axes=F,add=T)
+legend('bottomright',c('DL','GBM','DRF','NB'), fill=c('red','blue','black','green'), cex=0.75, bty='n')
+xtick<-seq(0, 1, by=0.5)
+ytick<-seq(0.5, 1, by=0.5)
+abline(h=0)
+abline(v=1)
+text(x=xtick,  par("usr")[3], labels = c(1,0.5,0), srt = 45, pos = 1, xpd = TRUE)
+text(x=c(1.2,1.2),y=ytick,  par("usr")[1], labels = c(0.5,1), srt = 45, pos = 1, xpd = TRUE)
+text(x=1.35,y=0.5, labels = "Sensitivity", srt = 90, pos = 1, xpd = TRUE)
+#####
+#Plotting for HYDRO
+labels<-h2otest_matrix[,3001]
+nl<-revalue(labels,c(ACETO=0,ACIDO=0,HYDRO=1,METHA=0))
+rocobj<-roc(nl,as.numeric(m1_predvec_hydro))
+plot.roc(rocobj,legacy.axes = T, axes=F, col='red',ylab="")
+rocobj<-roc(nl,as.numeric(m2_predvec_hydro))
+plot.roc(rocobj,legacy.axes = T, col='blue',axes=F,add=T)
+rocobj<-roc(nl,as.numeric(m3_predvec_hydro))
+plot.roc(rocobj,legacy.axes = T, col='black',axes=F,add=T)
+rocobj<-roc(nl,as.numeric(m4_predvec_hydro))
+plot.roc(rocobj,legacy.axes = T, col='green',axes=F,add=T)
+legend('bottomright',c('DL','GBM','DRF','NB'), fill=c('red','blue','black','green'), cex=0.75, bty='n')
+xtick<-seq(0, 1, by=0.5)
+ytick<-seq(0.5, 1, by=0.5)
+abline(h=0)
+abline(v=1)
+text(x=xtick,  par("usr")[3], labels = c(1,0.5,0), srt = 45, pos = 1, xpd = TRUE)
+text(x=c(1.2,1.2),y=ytick,  par("usr")[1], labels = c(0.5,1), srt = 45, pos = 1, xpd = TRUE)
+text(x=1.35,y=0.5, labels = "Sensitivity", srt = 90, pos = 1, xpd = TRUE)
+
+#####
+#Plotting for METHA
+labels<-h2otest_matrix[,3001]
+nl<-revalue(labels,c(ACETO=0,ACIDO=0,HYDRO=0,METHA=1))
+rocobj<-roc(nl,as.numeric(m1_predvec_metha))
+plot.roc(rocobj,legacy.axes = T, axes=F, col='red',ylab="")
+rocobj<-roc(nl,as.numeric(m2_predvec_metha))
+plot.roc(rocobj,legacy.axes = T, col='blue',axes=F,add=T)
+rocobj<-roc(nl,as.numeric(m3_predvec_metha))
+plot.roc(rocobj,legacy.axes = T, col='black',axes=F,add=T)
+rocobj<-roc(nl,as.numeric(m4_predvec_metha))
+legend('bottomright',c('DL','GBM','DRF','NB'), fill=c('red','blue','black','green'), cex=0.75, bty='n')
+xtick<-seq(0, 1, by=0.5)
+ytick<-seq(0.5, 1, by=0.5)
+abline(h=0)
+abline(v=1)
+text(x=xtick,  par("usr")[3], labels = c(1,0.5,0), srt = 45, pos = 1, xpd = TRUE)
+text(x=c(1.2,1.2),y=ytick,  par("usr")[1], labels = c(0.5,1), srt = 45, pos = 1, xpd = TRUE)
+text(x=1.35,y=0.5, labels = "Sensitivity", srt = 90, pos = 1, xpd = TRUE)
+
+
+legend('bottomright',c('ACETO','ACIDO','HYDRO','METHA'), fill=c('red','blue','black','green'))
+xtick<-seq(0, 1, by=0.5)
+ytick<-seq(0.5, 1, by=0.5)
+abline(h=0)
+abline(v=1)
+text(x=xtick,  par("usr")[3], labels = c(1,0.5,0), srt = 45, pos = 1, xpd = TRUE)
+text(x=c(1.2,1.2),y=ytick,  par("usr")[1], labels = c(0.5,1), srt = 45, pos = 1, xpd = TRUE)
+text(x=1.35,y=0.5, labels = "Sensitivity", srt = 90, pos = 1, xpd = TRUE)

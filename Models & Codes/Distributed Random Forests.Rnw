@@ -1,0 +1,41 @@
+
+#Implementation of Distributed Random Forests
+
+#Required packages
+library(h2o)
+library(ggplot2)
+
+#Setting up H2O server and load data
+
+localh2o <- h2o.init(nthreads=-1, max_mem_size = "6g")
+h2o.removeAll() ## clean slate - just in case the cluster was already running
+
+#uploading datasets
+trainpath = normalizePath("./trainingset.csv")
+validatepath = normalizePath("./validationset.csv")
+testpath = normalizePath("./testset.csv")
+h2otrain <- h2o.uploadFile(trainpath, destination_frame = "h2otrain0", 
+                           parse = TRUE, parse_type="CSV", progressBar =FALSE)
+h2ovalidate <- h2o.uploadFile(validatepath, 
+                              destination_frame = "h2ovalidate0", 
+                              parse = TRUE, parse_type = "CSV", 
+                              progressBar =FALSE)
+h2otest <- h2o.uploadFile(testpath, 
+                          destination_frame = "h2otest0", 
+                          parse = TRUE, parse_type = "CSV", 
+                          progressBar = FALSE)
+
+#Distributed Random Forests model implementation
+response <- "label"
+ignore <- "labelT"
+predictors <- setdiff(names(h2otrainvalid), c(response, ignore))
+m3 <- h2o.randomForest(
+  model_id = "DRFModel", 
+  training_frame = h2otrain, 
+  validation_frame = h2ovalidate, 
+  x = predictors, 
+  y = response, 
+  ntrees=200,
+  max_depth=20
+)
+summary(m3)

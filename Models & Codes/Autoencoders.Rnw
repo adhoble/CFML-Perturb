@@ -1,0 +1,50 @@
+
+#Implementation of Autoencoders
+
+#Required packages
+library(h2o)
+library(ggplot2)
+
+#Setting up H2O server and load data
+
+localh2o <- h2o.init(nthreads=-1, max_mem_size = "6g")
+h2o.removeAll() ## clean slate - just in case the cluster was already running
+
+#uploading datasets
+trainpath = normalizePath("./trainingset.csv")
+validatepath = normalizePath("./validationset.csv")
+testpath = normalizePath("./testset.csv")
+h2otrain <- h2o.uploadFile(trainpath, destination_frame = "h2otrain0", 
+                           parse = TRUE, parse_type="CSV", progressBar =FALSE)
+h2ovalidate <- h2o.uploadFile(validatepath, 
+                              destination_frame = "h2ovalidate0", 
+                              parse = TRUE, parse_type = "CSV", 
+                              progressBar =FALSE)
+h2otest <- h2o.uploadFile(testpath, 
+                          destination_frame = "h2otest0", 
+                          parse = TRUE, parse_type = "CSV", 
+                          progressBar = FALSE)
+
+#Autoencoders model implementation
+response <- "labelT"
+ignore <- "label"
+predictors <- setdiff(names(h2otrain), c(response, ignore))
+ae_model <- h2o.deeplearning(
+  model_id = "autoenc_model", 
+  training_frame = "h2otrain0", 
+  validation_frame = "h2ovalidate0", 
+  x = predictors, 
+  #y = response, 
+  activation="Tanh", 
+  hidden=c(2000),
+  epochs=1,
+  ignore_const_cols=F, 
+  autoencoder=T
+)
+
+test_rec_error <- as.data.frame(h2o.anomaly(ae_model, h2otest))
+test_rec_error$labelT <- test_set$labelT
+ggplot(test_rec_error, aes(x=labelT, y=Reconstruction.MSE)) + geom_boxplot() +
+  theme(axis.text.x=element_text(angle=-90))
+test_recon <- h2o.predict(ae_model, h2otest)
+summary(test_recon)
